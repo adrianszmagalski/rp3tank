@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import threading
 from typing import Iterator
@@ -13,27 +14,51 @@ logger = logging.getLogger(__name__)
 try:
     from picamera2 import Picamera2
     from picamera2.encoders import MJPEGEncoder
-    from picamera2.outputs import Output
+    from picamera2.outputs import FileOutput
 
     _PICAMERA2_AVAILABLE = True
 except ImportError:
     Picamera2 = None  # type: ignore[misc, assignment]
     MJPEGEncoder = None  # type: ignore[misc, assignment]
-    Output = object  # type: ignore[misc, assignment]
+    FileOutput = None  # type: ignore[misc, assignment]
     _PICAMERA2_AVAILABLE = False
 
 
-class _FrameOutput(Output if _PICAMERA2_AVAILABLE else object):  # type: ignore[misc]
-    """Captures encoded JPEG frames from the hardware encoder."""
+class _FrameOutput(io.BufferedIOBase):
+    """Receives encoded JPEG frames via FileOutput -> write()."""
 
     def __init__(self, stream: CameraStream) -> None:
-        if _PICAMERA2_AVAILABLE:
-            super().__init__()
+        super().__init__()
         self._stream = stream
 
-    def write(self, buf: bytes) -> int | None:
+    def writable(self) -> bool:
+        return True
+
+    def write(self, buf: bytes) -> int:
         self._stream._on_frame(buf)
-        return len(buf) if _PICAMERA2_AVAILABLE else None
+        return len(buf)
+
+
+def _create_mjpeg_encoder(quality: int) -> MJPEGEncoder:
+    """Build MJPEGEncoder; quality kwarg name varies by picamera2 version."""
+    assert MJPEGEncoder is not None
+    attempts: tuple[dict[str, int], ...] = (
+        {"quality": quality},
+        {"qfactor": quality},
+        {"q": quality},
+        {},
+    )
+    last_error: TypeError | None = None
+    for kwargs in attempts:
+        try:
+            return MJPEGEncoder(**kwargs)
+        except TypeError as exc:
+            last_error = exc
+    if last_error is not None:
+        logger.warning(
+            "MJPEGEncoder quality not supported, using defaults: %s", last_error
+        )
+    return MJPEGEncoder()
 
 
 class CameraStream:
@@ -67,8 +92,8 @@ class CameraStream:
                 controls={"FrameRate": cfg.fps},
             )
             picam2.configure(video_config)
-            encoder = MJPEGEncoder(qfactor=cfg.quality)
-            output = _FrameOutput(self)
+            encoder = _create_mjpeg_encoder(cfg.quality)
+            output = FileOutput(_FrameOutput(self))
             picam2.start_recording(encoder, output)
             self._picam2 = picam2
             self._running = True
