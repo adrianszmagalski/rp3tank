@@ -1,0 +1,24 @@
+# RP3 Tank — Pi control server (Faza 1)
+
+camera:
+  width: 960
+  height: 540
+  fps: 30
+  quality: HIGH  # VERY_LOW | LOW | MEDIUM | HIGH | VERY_HIGH
+
+serial:
+  port: /dev/serial0
+  baud: 115200
+  reconnect_seconds: 2
+
+server:
+  host: 0.0.0.0
+  port: 8000
+  log_level: INFO  # DEBUG for verbose UART/camera logs
+
+safety:
+  control_timeout_ms: 500
+  pan_min: 10
+  pan_max: 170
+  tilt_min: 30
+  tilt_max: 150

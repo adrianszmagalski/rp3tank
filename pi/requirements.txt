@@ -1,0 +1,8 @@
+# Python dependencies for Pi control server.
+# Picamera2: system package on Raspberry Pi OS — use:
+#   python3 -m venv --system-site-packages venv
+
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pyserial>=3.5
+pyyaml>=6.0
