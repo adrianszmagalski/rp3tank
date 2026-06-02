@@ -6,6 +6,25 @@ podsumowanie każdej sesji leżą w `docs/iterations/`. Format wpisu — patrz
 
 ---
 
+## Faza 2 — Pico: drive + serwa + watchdog + STAT ✅
+
+- **Data:** 2026-06-02
+- **Platforma / agent:** Pico (C++) / Pico Agent (Cursor)
+- **Branch / commit:** `main`
+- **Plan / podsumowanie:** `docs/iterations/02-pico-drive.md`
+
+**Co zrobiono:**
+- UART parser komend `DRIVE/CAM/STOP/PING` (bufor linii, tolerancja `\r\n`, drop overflow).
+- PWM silników MX1508 (GP2–GP5): ~20 kHz, sign-magnitude, STOP=faktyczny brake, rampa i limit mocy.
+- PWM serw (GP6/GP7): 50 Hz, mapowanie stopni→µs, clamp do limitów.
+- Watchdog: logiczny failsafe ~300 ms (brak `DRIVE` → brake) + sprzętowy WDT RP2040.
+- Telemetria: `STAT batt=<x.xx> dist=0 up=1` 5 Hz po UART0; `batt` z ADC0 (×2).
+- Logi diagnostyczne po USB CDC (UART0 czysty).
+
+**Stan na sprzęcie:** build przechodzi i generuje `pico.uf2`; na obecnym bring-up „na sucho” PWM i STAT są weryfikowalne miernikiem/terminalem.
+
+**Następny krok:** podpiąć zasilanie silników/serw i potwierdzić realny ruch oraz dobrać rampę/limit; potem Faza 3 (HC-SR04).
+
 ## Faza 1 — Pi: serwer + kamera ✅
 
 - **Data:** 2026-06-01
