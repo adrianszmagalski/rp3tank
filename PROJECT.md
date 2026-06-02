@@ -39,7 +39,9 @@ okablowanie robota i nie współdzieli masy.
 - **Powerbank B** → tylko serwa SG-90 (osobny rail, brak brownoutu Pi przy ruchu serw).
 - **Koszyk 4×AA NiMH (~4,8 V)** → VM sterownika MX1508 → silniki.
 - **Wszystkie GND spięte w jeden punkt** (Pi, Pico, MX1508, powerbank B, pakiet AA).
-- Odsprzęganie: 100 nF na zaciskach każdego silnika + 1000 µF na VM/GND sterownika.
+- Odsprzęganie: 100 nF na zaciskach każdego silnika + ~440–660 µF (2–3× 220 µF
+  równolegle) na VB+/VB− sterownika. Uwaga: brak 1000 µF w inwentarzu — zastąpione
+  bankiem 220 µF; wystarcza przy rampie miękkiego startu silników (Faza 2).
 
 ---
 
@@ -50,8 +52,8 @@ okablowanie robota i nie współdzieli masy.
 | UART | Pi GPIO14 (TX) | Pico GP1 (RX) | 115200 8N1 |
 | UART | Pi GPIO15 (RX) | Pico GP0 (TX) | oba 3,3 V — bez konwertera |
 | Zasilanie Pico | Pi 5V | Pico VSYS | |
-| Silnik lewy | Pico GP2, GP3 | MX1508 kanał A | 2 wejścia PWM / silnik |
-| Silnik prawy | Pico GP4, GP5 | MX1508 kanał B | |
+| Silnik lewy | Pico GP2, GP3 | MX1508 M1A, M1B | mostek silnika 1 (2 wejścia PWM) |
+| Silnik prawy | Pico GP4, GP5 | MX1508 M2A, M2B | mostek silnika 2 |
 | Serwo pan | Pico GP6 | SG-90 sygnał | 3,3 V wystarcza |
 | Serwo tilt | Pico GP7 | SG-90 sygnał | |
 | HC-SR04 Trig | Pico GP8 | HC-SR04 Trig | |
@@ -106,14 +108,15 @@ zmienia się wstecz; nowe ustalenia trafiają tu i do `ITERATIONS.md`.
 | Faza | Platforma | Agent | Zakres | Status |
 |---|---|---|---|---|
 | **1** | Pi (Python) | Pi Agent | serwer + kamera MJPEG + WS + /status + most UART (degraduje bez Pico) + systemd | ✅ ukończona |
-| **2** | Pico (C++) | Pico Agent | parser UART, PWM MX1508 (2 silniki), 2 serwa (limity), watchdog ~300 ms, STAT (batt z ADC; dist placeholder) | ⬜ następna |
-| **3** | Pico (C++) | Pico Agent | HC-SR04 (dystans), ADC napięcia AA (×2), lokalny auto-stop, pełna telemetria STAT | ⬜ |
-| **4** | Pi (Python) | Pi Agent | integracja + hardening: wykrywanie Pico przez heartbeat, naprawa wyścigu shutdown, telemetria w UI, usunięcie tymczasowego CSS rotate | ⬜ |
-| **5** | ESP32 (C++/LVGL) | ESP32 Agent | WiFi klient do API Pi, ekran dotykowy 170×320, sterowanie, panel statusu, wykrywanie utraty łączności / resetu Pi | ⬜ |
+| **2** | Pico (C++) | Pico Agent | parser UART, PWM MX1508 (2 silniki), 2 serwa (limity), watchdog ~300 ms + sprzętowy, STAT 5 Hz (batt z ADC; dist placeholder), logi USB | ⬜ w toku |
+| **3** | Pi (Python) | Pi Agent | panel diagnostyczny w UI obok streamu, wykrywanie żywości Pico po świeżości STAT (KI-1), logowanie zdarzeń UART | ⬜ następna |
+| **4** | Pico (C++) | Pico Agent | HC-SR04 (dystans), lokalny auto-stop przed przeszkodą, pełna telemetria STAT (dist realny) | ⬜ |
+| **5** | Pi (Python) | Pi Agent | hardening: naprawa wyścigu shutdown (KI-2), usunięcie tymczasowego CSS rotate (KI-3) | ⬜ |
+| **6** | ESP32 (C++/LVGL) | ESP32 Agent | WiFi klient do API Pi, ekran dotykowy 170×320, sterowanie, panel statusu, wykrywanie utraty łączności / resetu Pi | ⬜ |
 
-Uwaga do kolejności: Faza 4 (hardening Pi) celowo jest **po** Fazie 2/3, bo
-wykrywanie Pico przez heartbeat da się rzetelnie przetestować dopiero gdy istnieje
-firmware odpowiadający ramkami STAT.
+Uwaga do kolejności: panel diagnostyczny (Faza 3, Pi) jest celowo **po** firmware Pico
+(Faza 2), bo rzetelne odróżnienie „Pico żyje" od „port otwarty" (KI-1) wymaga, by
+istniało firmware sypiące ramkami STAT. HC-SR04 (Faza 4) wraca do Pico po sesji Pi.
 
 ---
 
@@ -157,17 +160,42 @@ firmware odpowiadający ramkami STAT.
 
 - **KI-1 — fałszywe „Pico: połączony".** Otwarcie `/dev/serial0` zawsze się udaje
   (port istnieje na Pi niezależnie od tego, czy Pico jest podłączone), więc
-  `connected=true` znaczy tylko „port otwarty", nie „Pico żyje". **Fix: Faza 4** —
-  połączenie uznawane za żywe tylko gdy ramka STAT (odpowiedź na PING) przyszła
-  < N ms temu.
+  `connected=true` znaczy tylko „port otwarty", nie „Pico żyje". **Fix: Faza 3** —
+  połączenie uznawane za żywe tylko gdy ramka STAT przyszła < N ms temu.
 - **KI-2 — wyścig przy shutdownie.** Wątek `pico-uart-reader` siedzi w blokującym
-  `read()`, gdy wątek główny zamyka port → `TypeError` z pyserial. **Fix: Faza 4** —
+  `read()`, gdy wątek główny zamyka port → `TypeError` z pyserial. **Fix: Faza 5** —
   kolejność: ustaw stop event → join wątku z timeoutem → zamknij port; łapać wyjątek
   w readerze, gdy fd znika.
 - **KI-3 — tymczasowy obrót obrazu.** W `pi/src/web/index.html` jest tymczasowy
   `transform: rotate(180deg)` (kamera zamontowana do góry nogami do czasu statywu).
-  Źródło Picamera2 **nie jest ruszane** (decyzja Adriana). Do usunięcia w Fazie 4,
+  Źródło Picamera2 **nie jest ruszane** (decyzja Adriana). Do usunięcia w Fazie 5,
   gdy kamera będzie wyprostowana fizycznie.
+
+---
+
+## 9a. Ustalenia systemowe Pi (rozwiązane w bring-upie Fazy 2)
+
+Konfiguracja UART na Pi 3A+ — żeby przy reinstalacji systemu nie przechodzić tej
+drogi od zera:
+
+- **`/dev/serial0` domyślnie → `ttyS0` (mini-UART).** Baud mini-UART dryfuje wraz z
+  taktowaniem rdzenia (core clock), więc przy niestabilnym zasilaniu / throttlingu
+  ramki są przekłamane mimo poprawnego firmware. Objaw: regularny, ale nieczytelny
+  strumień.
+- **Fix — przepnij na PL011 (`ttyAMA0`):** w `/boot/firmware/config.txt`:
+  ```
+  enable_uart=1
+  dtoverlay=disable-bt
+  ```
+  Uwaga: poprawna składnia to `dtoverlay=disable-bt`, **nie** `disable-bt=1`. Po
+  reboocie `/dev/serial0` → `ttyAMA0` (własny zegar, stabilny niezależnie od
+  throttlingu). Na Bookworm usługa `hciuart` nie istnieje — overlay wystarcza.
+- **Konsola szeregowa musi być wyłączona:** `raspi-config` → Serial Port →
+  „login shell over serial" = NIE, „serial hardware" = TAK. Inaczej `agetty`/
+  `serial-getty` miesza bajty konsoli (echo, kody ANSI) w ramki protokołu.
+- **Stabilne zasilanie Pi ma znaczenie** dla mini-UART; przejście na PL011 zdejmuje
+  tę zależność (ważne, bo docelowo Pi jedzie z powerbanku).
+- Aplikacja i firmware bez zmian: dalej `/dev/serial0`, 115200 8N1.
 
 ---
 
