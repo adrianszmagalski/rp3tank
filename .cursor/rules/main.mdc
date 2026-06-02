@@ -1,0 +1,37 @@
+---
+description: Globalne zasady i role agentów projektu RP3 Tank
+globs:
+alwaysApply: true
+---
+
+# RP3 Tank — zasady dla agentów
+
+**Najpierw przeczytaj `PROJECT.md` (źródło prawdy) i `AGENTS.md` (role).** W razie
+konfliktu wygrywa `PROJECT.md`.
+
+## Role i izolacja
+- Jeden agent = jedna platforma = jeden katalog. Pracuj wyłącznie w swoim:
+  - **Pi Agent** → `pi/` (Python, FastAPI, asyncio).
+  - **Pico Agent** → `pico/` (C++, Pico SDK, cmake).
+  - **ESP32 Agent** → `esp32/` (C++, Arduino-ESP32, LVGL).
+- Nie edytuj cudzych katalogów. Pliki w roocie (`PROJECT.md`, `README.md`,
+  `AGENTS.md`, `.cursor/`) zmienia architekt; ty możesz dopisywać tylko do
+  `ITERATIONS.md` i `docs/iterations/`.
+
+## Kontrakty zamrożone (NIE zmieniaj bez architekta)
+Protokół UART, API WiFi, mapa pinów, domeny zasilania, limity serw
+(pan 10–170°, tilt 30–150°), czasy watchdoga (~300 ms Pico / 500 ms Pi).
+Jeśli zadanie wymaga zmiany kontraktu — zatrzymaj się i zapytaj.
+
+## Workflow
+- Zawsze najpierw **tryb Plan** → czekaj na akceptację → dopiero **Agent**.
+- Po sesji: **Conventional Commits** (`feat|fix|docs|refactor|chore|test|build(scope)`,
+  scope = `pi|pico|esp32|docs|repo`) **oraz obowiązkowe podsumowanie sesji**:
+  `docs/iterations/<faza>-<tytuł>.md` (wzór: `docs/iterations/_TEMPLATE.md`) + wpis do
+  `ITERATIONS.md`. Podsumowanie pisz swoimi słowami o faktycznym stanie kodu.
+
+## Higiena
+- Końce linii **LF**, nie CRLF (CRLF psuje systemd i shebangi).
+- **Pi:** kod działa bez podłączonego Pico (degradacja, nie crash).
+- **Pico:** bez dynamicznej alokacji; watchdog niezależny od reszty logiki.
+- Żadnych sekretów w repo; konfiguracja przez configi/`.env`.

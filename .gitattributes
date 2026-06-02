@@ -1,0 +1,20 @@
+# Domyślnie: normalizacja końców linii
+* text=auto eol=lf
+
+# Pliki czytane wprost przez Linuksa — TWARDO LF (CRLF psuje systemd/shebangi)
+*.service text eol=lf
+*.sh      text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.mdc     text eol=lf
+*.py      text eol=lf
+*.cpp     text eol=lf
+*.hpp     text eol=lf
+*.c       text eol=lf
+*.h       text eol=lf
+
+# Binaria — bez normalizacji
+*.uf2 binary
+*.png binary
+*.jpg binary
+*.pdf binary
