@@ -39,6 +39,9 @@ constexpr uint32_t STAT_PERIOD_MS    = 200;  // 5 Hz
 // Main loop tick (used for ramp and timers)
 constexpr uint32_t MAIN_LOOP_PERIOD_MS = 10;  // 100 Hz loop
 
+// Status LED blink
+constexpr uint32_t STATUS_LED_TOGGLE_MS = 250;
+
 // Motor control
 constexpr int16_t DRIVE_INPUT_MIN = -100;
 constexpr int16_t DRIVE_INPUT_MAX = 100;

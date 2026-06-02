@@ -17,6 +17,7 @@ static absolute_time_t g_last_drive_cmd_time;
 static bool g_failsafe_logged = false;
 static bool g_wdt_test_enabled = false;
 static absolute_time_t g_wdt_test_hang_at;
+static bool g_led_state = false;
 
 static void mark_drive_command_received() {
     g_last_drive_cmd_time = get_absolute_time();
@@ -49,6 +50,12 @@ int main() {
     motors::init();
     servos::init();
     telemetry::init_adc();
+#ifdef PICO_DEFAULT_LED_PIN
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    gpio_put(PICO_DEFAULT_LED_PIN, g_led_state);
+    printf("[BOOT] Status LED enabled on pin %d.\n", PICO_DEFAULT_LED_PIN);
+#endif
 
     // Safe outputs before entering main loop
     motors::brake_all();
@@ -82,6 +89,7 @@ int main() {
     // Initialize timers
     g_last_drive_cmd_time = get_absolute_time();
     absolute_time_t next_stat_time = make_timeout_time_ms(config::STAT_PERIOD_MS);
+    absolute_time_t next_led_toggle_time = make_timeout_time_ms(config::STATUS_LED_TOGGLE_MS);
     if (config::WDT_TEST_HANG_ENABLED) {
         g_wdt_test_enabled = true;
         g_wdt_test_hang_at = make_timeout_time_ms(config::WDT_TEST_HANG_AFTER_MS);
@@ -129,6 +137,15 @@ int main() {
             telemetry::send_stat_frame();
             next_stat_time = delayed_by_ms(next_stat_time, config::STAT_PERIOD_MS);
         }
+
+#ifdef PICO_DEFAULT_LED_PIN
+        if (absolute_time_diff_us(get_absolute_time(), next_led_toggle_time) <= 0) {
+            g_led_state = !g_led_state;
+            gpio_put(PICO_DEFAULT_LED_PIN, g_led_state);
+            next_led_toggle_time =
+                delayed_by_ms(next_led_toggle_time, config::STATUS_LED_TOGGLE_MS);
+        }
+#endif
 
         sleep_ms(config::MAIN_LOOP_PERIOD_MS);
     }
