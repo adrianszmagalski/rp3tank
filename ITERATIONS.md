@@ -6,6 +6,22 @@ podsumowanie każdej sesji leżą w `docs/iterations/`. Format wpisu — patrz
 
 ---
 
+## Faza 3 — Pi: diagnostyka + żywość Pico (KI-1) ✅
+
+- **Data:** 2026-06-03
+- **Platforma / agent:** Pi (Python) / Pi Agent (Cursor)
+- **Branch / commit:** `phase3`, `8388985`…`f23dadc`
+- **Plan / podsumowanie:** [`docs/iterations/03-pi-diagnostyka.md`](docs/iterations/03-pi-diagnostyka.md)
+
+**Co zrobiono:**
+- Żywość Pico po świeżości ramek `STAT` (`pico_alive`, `stat_age_ms`); `pico_connected` = port otwarty (KI-1 naprawione w UI).
+- `GET /events` + ring buffer zdarzeń; task diagnostyczny 250 ms; logowanie przez `logging`/journald.
+- Panel diagnostyczny w `index.html`: 3 stany Pico, alarmy, pas 8 zdarzeń; prog batt z histerezą i strażnikiem ważności.
+
+**KI-1:** zamknięte (fałszywe „Pico połączony” zastąpione rozróżnieniem port / STAT / żywy).
+
+---
+
 ## Faza 2 — Pico: drive + serwa + watchdog + STAT ✅
 
 - **Data:** 2026-06-02
