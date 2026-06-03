@@ -46,12 +46,13 @@ rp3tank/
 | Faza | Platforma | Co | Status |
 |---|---|---|---|
 | 1 | Pi (Python) | serwer + kamera MJPEG + WS + /status + most UART + systemd | ✅ ukończona |
-| 2 | Pico (C++) | drive PWM + serwa + watchdog + STAT | ⬜ następna |
-| 3 | Pico (C++) | HC-SR04 + ADC napięcia + auto-stop | ⬜ |
-| 4 | Pi (Python) | integracja + hardening | ⬜ |
-| 5 | ESP32 (C++/LVGL) | pilot + panel statusu | ⬜ |
+| 2 | Pico (C++) | drive PWM + serwa + watchdog + STAT + logi USB | ✅ ukończona |
+| 3 | Pi (Python) | panel diagnostyczny + żywość Pico po STAT (KI-1) + logi zdarzeń | ⬜ następna |
+| 4 | Pico (C++) | HC-SR04 + auto-stop + pełny `dist` w STAT | ⬜ |
+| 5 | Pi (Python) | hardening: wyścig shutdown (KI-2), usunięcie CSS rotate (KI-3) | ⬜ |
+| 6 | ESP32 (C++/LVGL) | pilot + panel statusu | ⬜ |
 
-Szczegóły i uzasadnienie kolejności: `PROJECT.md` §6.
+Szczegóły, kontrakty i uzasadnienie kolejności: `PROJECT.md`. Log sesji: `ITERATIONS.md`.
 
 ---
 
@@ -59,7 +60,9 @@ Szczegóły i uzasadnienie kolejności: `PROJECT.md` §6.
 
 Wymagania systemowe (Raspberry Pi OS Lite 64-bit / Bookworm) wykonane ręcznie raz:
 włączona kamera (auto-detekcja na Bookworm), `python3-picamera2` doinstalowane
-przez `apt`, użytkownik `rp` w grupach `video` i `dialout`. Szczegóły: `docs/iterations/`.
+przez `apt`, użytkownik `rp` w grupach `video` i `dialout`, UART na stabilnym PL011
+(`dtoverlay=disable-bt` → `/dev/serial0` = `ttyAMA0`) z wyłączoną konsolą szeregową.
+Szczegóły: `PROJECT.md` §9a oraz `docs/iterations/`.
 
 ```bash
 cd /opt/rp3tank/pi
