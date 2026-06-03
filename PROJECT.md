@@ -95,14 +95,22 @@ Pico → Pi:
 STAT batt=<float> dist=<int> up=<0|1>   # napięcie AA [V], HC-SR04 [cm], flaga życia
 ```
 
+
 ### 5.2 API WiFi Pi ↔ klient (przeglądarka / ESP32)
 
-```
 GET  /              # UI testowe
-GET  /status        # JSON: uptime_s, pico_connected, batt_v, dist_cm, mode
+GET  /status        # JSON: uptime_s, pico_connected (= port otwarty),
+                    #       pico_alive (= świeżość STAT < diagnostics.pico_stale_ms),
+                    #       stat_age_ms (wiek ostatniej ramki STAT | null),
+                    #       batt_v, dist_cm, mode
+GET  /events        # JSON: {"events":[{ts, level, code, message}, ...]} — ring ostatnich
+                    #       diagnostics.events_buffer_size zdarzeń (UI pokazuje 8)
 GET  /stream.mjpg   # MJPEG (multipart/x-mixed-replace)
 WS   /ws/control    # {type:"drive",left,right} | {type:"cam",pan,tilt} | {type:"stop"}
-```
+
+# Zmiana addytywna (Faza 3): pico_alive, stat_age_ms i /events dodane; pico_connected
+# zachowuje znaczenie "port otwarty". Nic istniejącego nie usunięto — ESP32 (Faza 6)
+# bez zmian.
 
 ### 5.3 Watchdog (dwie niezależne warstwy)
 
