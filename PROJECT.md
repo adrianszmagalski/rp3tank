@@ -95,29 +95,55 @@ Pico → Pi:
 STAT batt=<float> dist=<int> up=<0|1>   # napięcie AA [V], HC-SR04 [cm], flaga życia
 ```
 
+**UART0 między Pi a Pico jest zarezerwowany wyłącznie na powyższe.** Po stronie Pico
+nigdy nie wysyła się tym kanałem nic poza ramką `STAT` (Pi parsuje tylko `STAT …`;
+każda inna linia to dla Pi szum).
+
+> **Uwaga (Faza 3.1) — lokalny tryb serwisowy USB Pico, POZA tym kontraktem.**
+> Pico przyjmuje te same komendy `DRIVE/CAM/STOP/PING` także przez **USB CDC**
+> (serial monitor podłączony do PC), jako narzędzie serwisowe gdy WiFi/Pi są
+> niedostępne. Dodatkowo na **USB** (i tylko tam) dostępne są komendy lokalne `HELP`,
+> `STAT?` oraz odpowiedzi `PONG`, echo i ACK `OK …`/`ERR …`. **Nic z tego nie trafia
+> na UART0** — kontrakt UART Pi↔Pico pozostaje nietknięty. `HELP`/`STAT?`/`PONG`/echo/
+> ACK to rozszerzenie lokalne USB; **nie są częścią protokołu sieciowego** i klienci
+> WiFi (przeglądarka, ESP32) ich nie używają. Szczegóły:
+> `docs/iterations/03_1-pico-serwis-usb.md`.
 
 ### 5.2 API WiFi Pi ↔ klient (przeglądarka / ESP32)
 
+```
 GET  /              # UI testowe
-GET  /status        # JSON: uptime_s, pico_connected (= port otwarty),
+GET  /status        # JSON: uptime_s, pico_connected (= port UART otwarty),
                     #       pico_alive (= świeżość STAT < diagnostics.pico_stale_ms),
-                    #       stat_age_ms (wiek ostatniej ramki STAT | null),
+                    #       stat_age_ms (wiek ostatniej ramki STAT [ms] | null),
                     #       batt_v, dist_cm, mode
-GET  /events        # JSON: {"events":[{ts, level, code, message}, ...]} — ring ostatnich
-                    #       diagnostics.events_buffer_size zdarzeń (UI pokazuje 8)
+GET  /events        # JSON: {"events":[{ts, level, code, message}, ...]}
+                    #       ring ostatnich diagnostics.events_buffer_size zdarzeń
+                    #       (ts = uptime_s serwera; level = info|warning|critical)
 GET  /stream.mjpg   # MJPEG (multipart/x-mixed-replace)
 WS   /ws/control    # {type:"drive",left,right} | {type:"cam",pan,tilt} | {type:"stop"}
+```
 
-# Zmiana addytywna (Faza 3): pico_alive, stat_age_ms i /events dodane; pico_connected
-# zachowuje znaczenie "port otwarty". Nic istniejącego nie usunięto — ESP32 (Faza 6)
-# bez zmian.
+> **Rozróżnienie kluczowe (KI-1):** `pico_connected` znaczy tylko „port `/dev/serial0`
+> jest otwarty" (na Pi udaje się to zawsze, nawet bez Pico). **Żywość Pico to
+> `pico_alive`** — `True` tylko gdy świeża ramka `STAT` przyszła < `pico_stale_ms` temu.
+> Klienci (ESP32 w Fazie 6) powinni polegać na **`pico_alive`**, nie na
+> `pico_connected`, żeby nie powtórzyć KI-1 po swojej stronie.
+
+> **Zmiana addytywna (Faza 3):** pola `pico_alive`, `stat_age_ms` oraz endpoint
+> `/events` zostały **dodane**; `pico_connected` zachowuje znaczenie „port otwarty".
+> Nic istniejącego nie usunięto ani nie zmieniło znaczenia — kompatybilne wstecz.
 
 ### 5.3 Watchdog (dwie niezależne warstwy)
 
-- **Pico (twardy, lokalny): brak komendy > ~300 ms → STOP silników.** To jest realny
-  failsafe — działa nawet gdy serwer Pi leży.
+- **Pico (twardy, lokalny): brak komendy `DRIVE` > ~300 ms → STOP/brake silników.** To
+  jest realny failsafe — działa nawet gdy serwer Pi leży. `DRIVE` z dowolnego źródła
+  (UART od Pi **lub** USB w trybie serwisowym) odświeża ten sam timer.
 - **Pi (aplikacyjny): brak komendy > 500 ms → wysyła STOP, mode="failsafe".** Druga
   warstwa, nie zastępuje watchdoga Pico.
+- **To dwie różne rzeczy, nie myl ich z detekcją życia Pico** (`pico_alive`,
+  `pico_stale_ms` ~1000 ms — §5.2). Watchdog = failsafe sterowania; świeżość STAT =
+  „czy Pico nadaje".
 
 ---
 
@@ -130,8 +156,9 @@ zmienia się wstecz; nowe ustalenia trafiają tu i do `ITERATIONS.md`.
 |---|---|---|---|---|
 | **1** | Pi (Python) | Pi Agent | serwer + kamera MJPEG + WS + /status + most UART (degraduje bez Pico) + systemd | ✅ ukończona |
 | **2** | Pico (C++) | Pico Agent | parser UART, PWM MX1508 (2 silniki), 2 serwa (limity), watchdog ~300 ms + sprzętowy, STAT 5 Hz (batt z ADC; dist placeholder), logi USB | ✅ ukończona |
-| **3** | Pi (Python) | Pi Agent | panel diagnostyczny w UI obok streamu, wykrywanie żywości Pico po świeżości STAT (KI-1), logowanie zdarzeń UART | ⬜ następna |
-| **4** | Pico (C++) | Pico Agent | HC-SR04 (dystans), lokalny auto-stop przed przeszkodą, pełna telemetria STAT (dist realny) | ⬜ |
+| **3** | Pi (Python) | Pi Agent | panel diagnostyczny w UI obok streamu, wykrywanie żywości Pico po świeżości STAT (**KI-1 zamknięte**), `/events` + logowanie zdarzeń (journald + ring) | ✅ ukończona |
+| **3.1** | Pico (C++) | Pico Agent | dodatkowa: lokalny tryb serwisowy przez USB CDC (komendy + echo + ACK + HELP/STAT?/PONG na USB; UART0 czysty) | ✅ ukończona |
+| **4** | Pico (C++) | Pico Agent | HC-SR04 (dystans), lokalny auto-stop przed przeszkodą, pełna telemetria STAT (dist realny) | ⬜ następna |
 | **5** | Pi (Python) | Pi Agent | hardening: naprawa wyścigu shutdown (KI-2), usunięcie tymczasowego CSS rotate (KI-3) | ⬜ |
 | **6** | ESP32 (C++/LVGL) | ESP32 Agent | WiFi klient do API Pi, ekran dotykowy 170×320, sterowanie, panel statusu, wykrywanie utraty łączności / resetu Pi | ⬜ |
 
@@ -156,7 +183,7 @@ istniało firmware sypiące ramkami STAT. HC-SR04 (Faza 4) wraca do Pico po sesj
 - `stdio_init_all()` przed jakimkolwiek `printf()`. Rozważyć hardware watchdog timer.
 
 ### C++ (ESP32)
-- Arduino-ESP32 + LVGL (do potwierdzenia na starcie Fazy 5).
+- Arduino-ESP32 + LVGL (do potwierdzenia na starcie Fazy 6).
 - Tylko klient WiFi do Pi; brak fizycznego połączenia z robotem.
 
 ---
@@ -179,10 +206,12 @@ istniało firmware sypiące ramkami STAT. HC-SR04 (Faza 4) wraca do Pico po sesj
 
 ## 9. Znane problemy / decyzje otwarte
 
-- **KI-1 — fałszywe „Pico: połączony".** Otwarcie `/dev/serial0` zawsze się udaje
-  (port istnieje na Pi niezależnie od tego, czy Pico jest podłączone), więc
-  `connected=true` znaczy tylko „port otwarty", nie „Pico żyje". **Fix: Faza 3** —
-  połączenie uznawane za żywe tylko gdy ramka STAT przyszła < N ms temu.
+- **KI-1 — fałszywe „Pico: połączony". ✅ ROZWIĄZANE (Faza 3).** Otwarcie
+  `/dev/serial0` zawsze się udaje (port istnieje na Pi niezależnie od tego, czy Pico
+  jest podłączone), więc `pico_connected=true` znaczy tylko „port otwarty". Naprawa:
+  dodane pole `pico_alive` (świeżość ramek STAT < `pico_stale_ms`, domyślnie 1000 ms)
+  i `stat_age_ms`; `pico_connected` zachowane jako „port otwarty"; UI rozróżnia trzy
+  stany (brak portu / port bez STAT / żywy). Klienci powinni polegać na `pico_alive`.
 - **KI-2 — wyścig przy shutdownie.** Wątek `pico-uart-reader` siedzi w blokującym
   `read()`, gdy wątek główny zamyka port → `TypeError` z pyserial. **Fix: Faza 5** —
   kolejność: ustaw stop event → join wątku z timeoutem → zamknij port; łapać wyjątek
@@ -197,6 +226,19 @@ istniało firmware sypiące ramkami STAT. HC-SR04 (Faza 4) wraca do Pico po sesj
   220–470 µF na railu serw. Mitygacja programowa (rezerwowa, gdyby brownout wystąpił):
   łagodzenie ruchu serw w firmware Pico (ograniczenie prędkości przesuwu). Objaw do
   obserwacji: reset Pi / zamrożenie streamu przy szybkim pan+tilt.
+
+### Decyzje zamknięte (żeby nie wracały)
+
+- **Konsola Linuksa Pi NIE jedzie po UART robota.** Pojawił się pomysł, by przez USB
+  Pico tunelować komendy powłoki do Pi (PC → USB → Pico → UART → Pi → powrót). Odrzucone:
+  UART Pi↔Pico jest zarezerwowany na protokół robota (§5.1, §9a), a konsola szeregowa
+  (`serial-getty` na `ttyAMA0`) miesza bajty loginu w ramki — to była przyczyna krzaków
+  w bring-upie Fazy 2, świadomie wyłączona w §9a. **Jeden kabel UART = jedno
+  zastosowanie naraz.** Awaryjny dostęp do Pi bez WiFi (gdyby był potrzebny) realizuje
+  się osobno i bez Pico: USB-gadget/OTG (SSH przez kabel USB do Pi), tryb AP na Pi
+  (własny hotspot), albo doraźny adapter USB-UART wpięty w konsolę Pi tylko na czas
+  serwisu (wtedy robot nie jeździ). Tryb serwisowy USB→Pico (Faza 3.1) jest terminalem
+  do **Pico**, nie do Linuksa na Pi.
 
 ---
 
@@ -219,7 +261,9 @@ drogi od zera:
   throttlingu). Na Bookworm usługa `hciuart` nie istnieje — overlay wystarcza.
 - **Konsola szeregowa musi być wyłączona:** `raspi-config` → Serial Port →
   „login shell over serial" = NIE, „serial hardware" = TAK. Inaczej `agetty`/
-  `serial-getty` miesza bajty konsoli (echo, kody ANSI) w ramki protokołu.
+  `serial-getty` miesza bajty konsoli (echo, kody ANSI) w ramki protokołu. (To samo
+  jest powodem, dla którego nie tunelujemy powłoki Linuksa po UART — patrz §9, decyzje
+  zamknięte.)
 - **Stabilne zasilanie Pi ma znaczenie** dla mini-UART; przejście na PL011 zdejmuje
   tę zależność (ważne, bo docelowo Pi jedzie z powerbanku).
 - Aplikacja i firmware bez zmian: dalej `/dev/serial0`, 115200 8N1.
