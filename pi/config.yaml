@@ -25,3 +25,7 @@ safety:
 
 diagnostics:
   pico_stale_ms: 1000
+  batt_warn_v: 4.4
+  batt_warn_hysteresis_v: 0.1
+  batt_min_valid_v: 3.0
+  events_buffer_size: 20

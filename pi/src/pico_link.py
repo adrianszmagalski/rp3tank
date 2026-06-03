@@ -8,12 +8,15 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import serial
 from serial import SerialException
 
 from src.config import DiagnosticsConfig, SafetyConfig, SerialConfig, clamp
+
+if TYPE_CHECKING:
+    from src.event_log import EventLog
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +51,12 @@ class PicoLink:
         serial_cfg: SerialConfig,
         safety_cfg: SafetyConfig,
         diagnostics_cfg: DiagnosticsConfig,
+        event_log: EventLog | None = None,
     ) -> None:
         self._serial_cfg = serial_cfg
         self._safety = safety_cfg
         self._diagnostics = diagnostics_cfg
+        self._event_log = event_log
         self._ser: serial.Serial | None = None
         self._connected = False
         self._telemetry: Telemetry | None = None
@@ -213,6 +218,14 @@ class PicoLink:
         match = _STAT_RE.match(line)
         if not match:
             logger.debug("UART RX: %s", line)
+            if self._event_log is not None:
+                snippet = line if len(line) <= 48 else line[:45] + "..."
+                self._event_log.emit(
+                    "warning",
+                    "uart_parse_error",
+                    f"Błąd parsowania UART: {snippet}",
+                    debounce=True,
+                )
             return
         telem = Telemetry(
             batt_v=float(match.group("batt")),

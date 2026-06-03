@@ -48,6 +48,10 @@ class SafetyConfig:
 @dataclass
 class DiagnosticsConfig:
     pico_stale_ms: int = 1000
+    batt_warn_v: float = 4.4
+    batt_warn_hysteresis_v: float = 0.1
+    batt_min_valid_v: float = 3.0
+    events_buffer_size: int = 20
 
 
 @dataclass
