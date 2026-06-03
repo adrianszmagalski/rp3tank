@@ -1,5 +1,8 @@
 # Faza 3 — Pi: panel diagnostyczny + żywość Pico (KI-1) + zdarzenia
 
+> Pełne podsumowanie sesji (czat + implementacja + commity):
+> [`03-pi-diagnostyka-sesja-pelne-podsumowanie.md`](03-pi-diagnostyka-sesja-pelne-podsumowanie.md)
+
 - **Data:** 2026-06-03
 - **Platforma / agent:** Pi (Python) / Pi Agent (Cursor)
 - **Branch / commit:** `phase3`, `8388985`…`f23dadc` (3 commity feat)
