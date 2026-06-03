@@ -35,16 +35,38 @@
       min-height: 200px;
       object-fit: contain;
     }
-    .status {
+    .diag-panel {
       background: #16213e;
       padding: 0.75rem 1rem;
       border-radius: 8px;
       font-size: 0.9rem;
       line-height: 1.6;
       margin-bottom: 1rem;
+      max-width: 1100px;
     }
-    .status .ok { color: #4ade80; }
-    .status .err { color: #f87171; }
+    .diag-panel .ok { color: #4ade80; }
+    .diag-panel .err { color: #f87171; }
+    .diag-panel .neutral { color: #94a3b8; }
+    .alarms {
+      margin: 0.5rem 0;
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      background: rgba(248, 113, 113, 0.12);
+      border: 1px solid #f87171;
+    }
+    .alarms:empty { display: none; }
+    .alarms li { color: #f87171; margin: 0.2rem 0; }
+    .events-feed {
+      margin-top: 0.75rem;
+      font-family: ui-monospace, monospace;
+      font-size: 0.75rem;
+      line-height: 1.45;
+      max-height: 10rem;
+      overflow-y: auto;
+    }
+    .events-feed .ev-info { color: #94a3b8; }
+    .events-feed .ev-warning { color: #fbbf24; }
+    .events-feed .ev-critical { color: #f87171; }
     .controls { display: flex; flex-direction: column; gap: 1rem; }
     .dpad {
       display: grid;
@@ -86,16 +108,22 @@
     }
     .btn-stop:active { background: #991b1b; }
     .ws-state { font-size: 0.8rem; opacity: 0.8; }
+    .ws-state.err { color: #f87171; opacity: 1; }
   </style>
 </head>
 <body>
   <h1>RP3 Tank — panel testowy</h1>
-  <div class="status" id="status">Ładowanie statusu…</div>
-  <p class="ws-state">WebSocket: <span id="wsState">łączenie…</span></p>
+
+  <div class="diag-panel" id="diagPanel">
+    <div id="statusLines">Ładowanie statusu…</div>
+    <ul class="alarms" id="alarms"></ul>
+    <p class="ws-state">WebSocket: <span id="wsState">łączenie…</span></p>
+    <div class="events-feed" id="eventsFeed"></div>
+  </div>
 
   <div class="layout">
     <div class="stream-wrap">
-      <img src="/stream.mjpg" alt="Podgląd kamery">
+      <img id="streamImg" src="/stream.mjpg" alt="Podgląd kamery">
     </div>
     <div class="controls">
       <div class="dpad" id="dpad">
@@ -126,14 +154,22 @@
 
   <script>
     const WS_URL = `ws://${location.host}/ws/control`;
+    // Zgodne z domyślnym diagnostics.batt_min_valid_v / batt_warn_v w config.yaml
+    const BATT_MIN_VALID_V = 3.0;
+    const BATT_WARN_V = 4.4;
+
     let ws = null;
     let reconnectDelay = 1000;
     let driveTimer = null;
-    let currentLeft = 0;
-    let currentRight = 0;
+    let wsConnected = false;
+    let streamDown = false;
+    let lastStatus = null;
 
     const wsStateEl = document.getElementById('wsState');
-    const statusEl = document.getElementById('status');
+    const statusLinesEl = document.getElementById('statusLines');
+    const alarmsEl = document.getElementById('alarms');
+    const eventsFeedEl = document.getElementById('eventsFeed');
+    const streamImg = document.getElementById('streamImg');
     const panInput = document.getElementById('pan');
     const tiltInput = document.getElementById('tilt');
     const panVal = document.getElementById('panVal');
@@ -151,8 +187,6 @@
     }
 
     function sendDrive(left, right) {
-      currentLeft = left;
-      currentRight = right;
       send({ type: 'drive', left, right });
     }
 
@@ -175,28 +209,105 @@
       send({ type: 'cam', pan, tilt });
     }
 
+    function battValid(battV) {
+      return battV != null && battV > BATT_MIN_VALID_V;
+    }
+
+    function formatBatt(battV) {
+      if (!battValid(battV)) {
+        return '<span class="neutral">— (dzielnik?)</span>';
+      }
+      const cls = battV < BATT_WARN_V ? 'err' : '';
+      return `<span class="${cls}">${battV.toFixed(2)} V</span>`;
+    }
+
+    function formatPico(d) {
+      if (!d.pico_connected) {
+        return '<span class="err">Pico: brak portu</span>';
+      }
+      if (!d.pico_alive) {
+        return '<span class="err">Pico: port otwarty, brak ramek STAT</span>';
+      }
+      const age = d.stat_age_ms != null ? d.stat_age_ms : '?';
+      return `<span class="ok">Pico: żywy (STAT ${age} ms temu)</span>`;
+    }
+
+    function collectAlarms(d) {
+      const items = [];
+      if (!d.pico_connected || !d.pico_alive) {
+        items.push('Brak życia Pico (port lub ramki STAT)');
+      }
+      if (d.mode === 'failsafe') {
+        items.push('Aktywny tryb failsafe');
+      }
+      if (battValid(d.batt_v) && d.batt_v < BATT_WARN_V) {
+        items.push(`Niskie napięcie baterii AA (${d.batt_v.toFixed(2)} V)`);
+      }
+      if (streamDown) {
+        items.push('Stream kamery niedostępny');
+      }
+      if (!wsConnected) {
+        items.push('Brak połączenia WebSocket');
+      }
+      return items;
+    }
+
+    function renderStatus(d) {
+      lastStatus = d;
+      const dist = d.dist_cm != null ? `${d.dist_cm} cm` : '—';
+      statusLinesEl.innerHTML =
+        `${formatPico(d)}<br>` +
+        `Uptime: ${d.uptime_s} s · Tryb: <strong>${d.mode}</strong><br>` +
+        `Bateria: ${formatBatt(d.batt_v)} · Dystans: ${dist}`;
+
+      const alarms = collectAlarms(d);
+      alarmsEl.innerHTML = alarms.map((t) => `<li>${t}</li>`).join('');
+    }
+
     function connectWs() {
       ws = new WebSocket(WS_URL);
+      wsConnected = false;
       wsStateEl.textContent = 'łączenie…';
+      wsStateEl.classList.remove('err');
 
       ws.onopen = () => {
+        wsConnected = true;
         wsStateEl.textContent = 'połączono';
+        wsStateEl.classList.remove('err');
         reconnectDelay = 1000;
+        if (lastStatus) renderStatus(lastStatus);
       };
 
       ws.onclose = () => {
+        wsConnected = false;
         wsStateEl.textContent = 'rozłączono — ponawiam…';
+        wsStateEl.classList.add('err');
         stopDriveInterval();
+        if (lastStatus) renderStatus(lastStatus);
         setTimeout(connectWs, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 1.5, 3000);
       };
 
       ws.onerror = () => {
         wsStateEl.textContent = 'błąd';
+        wsStateEl.classList.add('err');
       };
     }
 
-  connectWs();
+    connectWs();
+
+    streamImg.onerror = () => {
+      streamDown = true;
+      if (lastStatus) renderStatus(lastStatus);
+    };
+    streamImg.onstalled = () => {
+      streamDown = true;
+      if (lastStatus) renderStatus(lastStatus);
+    };
+    streamImg.onload = () => {
+      streamDown = false;
+      if (lastStatus) renderStatus(lastStatus);
+    };
 
     document.querySelectorAll('#dpad button').forEach((btn) => {
       const onDown = (e) => {
@@ -239,22 +350,32 @@
       try {
         const r = await fetch('/status');
         const d = await r.json();
-        const pico = d.pico_connected
-          ? '<span class="ok">Pico: połączony</span>'
-          : '<span class="err">Pico: brak</span>';
-        const batt = d.batt_v != null ? `${d.batt_v.toFixed(2)} V` : '—';
-        const dist = d.dist_cm != null ? `${d.dist_cm} cm` : '—';
-        statusEl.innerHTML =
-          `${pico}<br>` +
-          `Uptime: ${d.uptime_s} s · Tryb: <strong>${d.mode}</strong><br>` +
-          `Bateria: ${batt} · Dystans: ${dist}`;
+        renderStatus(d);
       } catch {
-        statusEl.innerHTML = '<span class="err">Status niedostępny</span>';
+        statusLinesEl.innerHTML = '<span class="err">Status niedostępny</span>';
+      }
+    }
+
+    async function pollEvents() {
+      try {
+        const r = await fetch('/events');
+        const data = await r.json();
+        const events = (data.events || []).slice(-8);
+        eventsFeedEl.innerHTML = events
+          .map((e) => {
+            const cls = `ev-${e.level}`;
+            return `<div class="${cls}">[${e.ts}s] ${e.message}</div>`;
+          })
+          .join('');
+      } catch {
+        eventsFeedEl.innerHTML = '<div class="ev-warning">Zdarzenia niedostępne</div>';
       }
     }
 
     pollStatus();
+    pollEvents();
     setInterval(pollStatus, 1000);
+    setInterval(pollEvents, 1000);
   </script>
 </body>
 </html>
