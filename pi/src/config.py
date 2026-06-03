@@ -46,11 +46,17 @@ class SafetyConfig:
 
 
 @dataclass
+class DiagnosticsConfig:
+    pico_stale_ms: int = 1000
+
+
+@dataclass
 class AppConfig:
     camera: CameraConfig
     serial: SerialConfig
     server: ServerConfig
     safety: SafetyConfig
+    diagnostics: DiagnosticsConfig
 
     @classmethod
     def defaults(cls) -> AppConfig:
@@ -59,6 +65,7 @@ class AppConfig:
             serial=SerialConfig(),
             server=ServerConfig(),
             safety=SafetyConfig(),
+            diagnostics=DiagnosticsConfig(),
         )
 
 
@@ -103,6 +110,7 @@ def load_config(path: Path | None = None) -> AppConfig:
     _merge_dataclass(cfg.serial, raw.get("serial"))
     _merge_dataclass(cfg.server, raw.get("server"))
     _merge_dataclass(cfg.safety, raw.get("safety"))
+    _merge_dataclass(cfg.diagnostics, raw.get("diagnostics"))
     return cfg
 
 

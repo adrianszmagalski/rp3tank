@@ -22,3 +22,6 @@ safety:
   pan_max: 170
   tilt_min: 30
   tilt_max: 150
+
+diagnostics:
+  pico_stale_ms: 1000

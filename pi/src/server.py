@@ -36,7 +36,7 @@ class AppState:
 
 def create_app(config: AppConfig) -> FastAPI:
     camera = CameraStream(config.camera)
-    pico = PicoLink(config.serial, config.safety)
+    pico = PicoLink(config.serial, config.safety, config.diagnostics)
     state = AppState(config=config, camera=camera, pico=pico)
     watchdog_task: asyncio.Task[None] | None = None
 
@@ -72,6 +72,8 @@ def create_app(config: AppConfig) -> FastAPI:
         return {
             "uptime_s": round(time.monotonic() - state.started_at, 1),
             "pico_connected": pico.connected,
+            "pico_alive": pico.alive,
+            "stat_age_ms": pico.stat_age_ms,
             "batt_v": telem.batt_v if telem is not None else None,
             "dist_cm": telem.dist_cm if telem is not None else None,
             "mode": state.mode,

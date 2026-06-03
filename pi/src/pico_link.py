@@ -6,13 +6,14 @@ import asyncio
 import logging
 import re
 import threading
+import time
 from dataclasses import dataclass
 from typing import Literal
 
 import serial
 from serial import SerialException
 
-from src.config import SafetyConfig, SerialConfig, clamp
+from src.config import DiagnosticsConfig, SafetyConfig, SerialConfig, clamp
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +43,19 @@ class _PendingCommand:
 class PicoLink:
     """Async-friendly UART bridge to Pico with 50 ms command coalescing."""
 
-    def __init__(self, serial_cfg: SerialConfig, safety_cfg: SafetyConfig) -> None:
+    def __init__(
+        self,
+        serial_cfg: SerialConfig,
+        safety_cfg: SafetyConfig,
+        diagnostics_cfg: DiagnosticsConfig,
+    ) -> None:
         self._serial_cfg = serial_cfg
         self._safety = safety_cfg
+        self._diagnostics = diagnostics_cfg
         self._ser: serial.Serial | None = None
         self._connected = False
         self._telemetry: Telemetry | None = None
+        self._last_stat_monotonic: float | None = None
         self._telemetry_lock = threading.Lock()
         self._cmd_lock = threading.Lock()
         self._pending: _PendingCommand | None = None
@@ -62,9 +70,28 @@ class PicoLink:
         return self._connected
 
     @property
+    def stat_age_ms(self) -> int | None:
+        with self._telemetry_lock:
+            if self._last_stat_monotonic is None:
+                return None
+            age_ms = int((time.monotonic() - self._last_stat_monotonic) * 1000)
+            return age_ms
+
+    @property
+    def alive(self) -> bool:
+        age = self.stat_age_ms
+        if age is None:
+            return False
+        return age < self._diagnostics.pico_stale_ms
+
+    @property
     def telemetry(self) -> Telemetry | None:
         with self._telemetry_lock:
             return self._telemetry
+
+    def _reset_stat_timestamp(self) -> None:
+        with self._telemetry_lock:
+            self._last_stat_monotonic = None
 
     async def start(self) -> None:
         if self._running:
@@ -115,6 +142,7 @@ class PicoLink:
     def _try_connect(self) -> None:
         if self._connected:
             return
+        self._reset_stat_timestamp()
         try:
             ser = serial.Serial(
                 self._serial_cfg.port,
@@ -142,6 +170,7 @@ class PicoLink:
     def _disconnect(self) -> None:
         self._stop_event.set()
         self._connected = False
+        self._reset_stat_timestamp()
         ser = self._ser
         self._ser = None
         if ser is not None:
@@ -192,10 +221,12 @@ class PicoLink:
         )
         with self._telemetry_lock:
             self._telemetry = telem
+            self._last_stat_monotonic = time.monotonic()
         logger.debug("Telemetry: batt=%.2f dist=%d", telem.batt_v, telem.dist_cm)
 
     def _handle_disconnect(self) -> None:
         self._connected = False
+        self._reset_stat_timestamp()
         ser = self._ser
         self._ser = None
         if ser is not None:
@@ -203,8 +234,6 @@ class PicoLink:
                 ser.close()
             except (SerialException, OSError):
                 pass
-        with self._telemetry_lock:
-            pass  # keep last telemetry optional; status uses connected flag
 
     def _sender_loop(self) -> None:
         while not self._stop_event.is_set() and self._connected:
