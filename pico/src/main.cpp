@@ -86,6 +86,10 @@ int main() {
 
     uart_protocol::init(handlers);
 
+    if (config::SERVICE_BANNER_ENABLED) {
+        uart_protocol::print_service_banner();
+    }
+
     // Initialize timers
     g_last_drive_cmd_time = get_absolute_time();
     absolute_time_t next_stat_time = make_timeout_time_ms(config::STAT_PERIOD_MS);
@@ -110,8 +114,9 @@ int main() {
         // Feed hardware watchdog
         watchdog_update();
 
-        // Poll UART RX and feed parser
+        // Poll UART RX and USB CDC stdin (non-blocking)
         uart_protocol::poll();
+        uart_protocol::poll_usb();
 
         // Logical watchdog for DRIVE commands
         const int64_t since_last_drive_ms =

@@ -6,6 +6,22 @@ podsumowanie każdej sesji leżą w `docs/iterations/`. Format wpisu — patrz
 
 ---
 
+## Faza 3.1 (dodatkowa) — Pico: tryb serwisowy USB ✅
+
+- **Data:** 2026-06-03
+- **Platforma / agent:** Pico (C++) / Pico Agent (Cursor)
+- **Branch / commit:** `main` (patrz `git log -1`)
+- **Plan / podsumowanie:** [`docs/iterations/03_1-pico-serwis-usb.md`](docs/iterations/03_1-pico-serwis-usb.md)
+
+**Co zrobiono:**
+- Drugie wejście komend przez USB CDC (nieblokujący `poll_usb`), wspólny dispatch z UART0.
+- Echo, `OK`/`ERR`, `HELP`, `STAT?`, `PING`→`PONG` wyłącznie na USB; UART0 bez zmian (§5.1).
+- Dwa bufory linii; baner serwisowy; `STAT?` jednorazowo na USB bez wpływu na STAT 5 Hz do Pi.
+
+**Kontrakt:** §5.1 bez zmian — rozszerzenia HELP/STAT?/ACK/PONG są USB-only.
+
+---
+
 ## Faza 3 — Pi: diagnostyka + żywość Pico (KI-1) ✅
 
 - **Data:** 2026-06-03

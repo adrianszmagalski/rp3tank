@@ -9,5 +9,7 @@ void init_adc();
 // STAT batt=<float> dist=0 up=1\n
 void send_stat_frame();
 
-}  // namespace telemetry
+// Print one STAT line on USB (service command STAT? only).
+void print_stat_usb();
 
+}  // namespace telemetry

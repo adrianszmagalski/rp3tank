@@ -20,6 +20,11 @@ static float read_batt_voltage() {
     return v * config::BATT_DIVIDER_MULTIPLIER;
 }
 
+static int format_stat_line(char* buf, size_t len) {
+    const float batt = read_batt_voltage();
+    return snprintf(buf, len, "STAT batt=%.2f dist=0 up=1\n", batt);
+}
+
 void init_adc() {
     adc_init();
     adc_gpio_init(26);  // GP26
@@ -28,22 +33,26 @@ void init_adc() {
 }
 
 void send_stat_frame() {
-    const float batt = read_batt_voltage();
-
     char buf[64];
-    // dist placeholder per spec; up=1 as long as firmware runs
-    const int n = snprintf(buf, sizeof(buf), "STAT batt=%.2f dist=0 up=1\n", batt);
+    const int n = format_stat_line(buf, sizeof(buf));
     if (n > 0) {
         uart_puts(uart0, buf);
     }
 
-    // Diagnostic log (not on UART)
     static uint32_t counter = 0;
     counter++;
-    if ((counter % 5) == 0) {  // ~1 Hz (STAT is 5 Hz)
+    if ((counter % 5) == 0) {
+        const float batt = read_batt_voltage();
         printf("[STAT] batt=%.2fV dist=0 up=1\n", batt);
     }
 }
 
-}  // namespace telemetry
+void print_stat_usb() {
+    char buf[64];
+    const int n = format_stat_line(buf, sizeof(buf));
+    if (n > 0) {
+        printf("%s", buf);
+    }
+}
 
+}  // namespace telemetry

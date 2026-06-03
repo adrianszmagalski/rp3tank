@@ -63,6 +63,10 @@ constexpr uint32_t UART_BAUD_RATE = 115200;
 // UART line buffer
 constexpr uint16_t UART_LINE_BUFFER_SIZE = 64;
 
+// USB service mode line buffer (separate from UART0)
+constexpr uint16_t USB_LINE_BUFFER_SIZE = 64;
+constexpr bool SERVICE_BANNER_ENABLED = true;
+
 // ADC averaging
 constexpr uint8_t BATT_SAMPLES = 8;
 
