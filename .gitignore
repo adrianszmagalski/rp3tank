@@ -1,1 +1,30 @@
+# Build artifacts
+/build/
+pico/build/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+pi/venv/
+
+# Firmware binaries (duże, nie wersjonuj przez git)
+*.uf2
+*.elf
+*.bin
+*.map
+
+# IDE
+.vscode/settings.json
+*.code-workspace
+
+# System
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+
+# Images
 *.png
+*.jpg

@@ -33,15 +33,28 @@ okablowanie robota i nie współdzieli masy.
 
 ---
 
-## 3. Domeny zasilania (3 osobne, JEDNA wspólna masa)
+## 3. Domeny zasilania (2 osobne, JEDNA wspólna masa)
 
-- **Powerbank A** → Pi (microUSB 5V). Z 5V Pi: Pico (VSYS) i HC-SR04 (VCC).
-- **Powerbank B** → tylko serwa SG-90 (osobny rail, brak brownoutu Pi przy ruchu serw).
-- **Koszyk 4×AA NiMH (~4,8 V)** → VM sterownika MX1508 → silniki.
-- **Wszystkie GND spięte w jeden punkt** (Pi, Pico, MX1508, powerbank B, pakiet AA).
-- Odsprzęganie: 100 nF na zaciskach każdego silnika + ~440–660 µF (2–3× 220 µF
-  równolegle) na VB+/VB− sterownika. Uwaga: brak 1000 µF w inwentarzu — zastąpione
-  bankiem 220 µF; wystarcza przy rampie miękkiego startu silników (Faza 2).
+> Zmiana względem pierwotnego projektu: **jeden powerbank zamiast dwóch** (brak miejsca
+> na drugi). Serwa przeniesione z osobnego powerbanku na domenę 5 V współdzieloną z Pi.
+> Silniki zostają same na koszyku AA — to najgłośniejszy elektrycznie odbiornik, więc
+> izolujemy go tam, gdzie najbardziej się to liczy.
+
+- **Powerbank (5 V) — domena logiki i serw:**
+  - Pi (microUSB 5 V); z 5 V Pi: Pico (VSYS) i HC-SR04 (VCC).
+  - Serwa SG-90 ×2 — z **osobnego portu USB** tego samego powerbanku (nie przez piny
+    Pi), z kondensatorem buforującym **~220–470 µF** na railu serw, blisko nich.
+- **Koszyk 4×AA NiMH (~4,8 V) — domena mocy silników:** → VB sterownika MX1508 → silniki.
+- **Wszystkie GND spięte w jeden punkt** (Pi, Pico, MX1508, serwa, koszyk AA, powerbank).
+- **Dwa „+" nigdy się nie stykają:** 5 V powerbanku oraz ~4,8 V z AA — łączy się tylko masa.
+- Odsprzęganie: 100 nF na zaciskach każdego silnika (fabryczne na podwoziu) + 1000 µF
+  na VB+/VB− sterownika; ~220–470 µF na railu serw.
+
+**Konsekwencja (KI-4):** serwa i Pi dzielą 5 V, więc gwałtowny ruch obu serw pod
+obciążeniem może chwilowo zapaść napięcie Pi (brownout/reset, glitch kamery). Mitygacja:
+osobny port USB dla serw, bufor pojemnościowy, ewentualnie łagodzenie ruchu serw w
+firmware Pico. Do sprawdzenia na egzemplarzu: liczba portów powerbanku i czy 2,4 A to
+limit na port czy łączny.
 
 ---
 
@@ -108,7 +121,7 @@ zmienia się wstecz; nowe ustalenia trafiają tu i do `ITERATIONS.md`.
 | Faza | Platforma | Agent | Zakres | Status |
 |---|---|---|---|---|
 | **1** | Pi (Python) | Pi Agent | serwer + kamera MJPEG + WS + /status + most UART (degraduje bez Pico) + systemd | ✅ ukończona |
-| **2** | Pico (C++) | Pico Agent | parser UART, PWM MX1508 (2 silniki), 2 serwa (limity), watchdog ~300 ms + sprzętowy, STAT 5 Hz (batt z ADC; dist placeholder), logi USB | ⬜ w toku |
+| **2** | Pico (C++) | Pico Agent | parser UART, PWM MX1508 (2 silniki), 2 serwa (limity), watchdog ~300 ms + sprzętowy, STAT 5 Hz (batt z ADC; dist placeholder), logi USB | ✅ ukończona |
 | **3** | Pi (Python) | Pi Agent | panel diagnostyczny w UI obok streamu, wykrywanie żywości Pico po świeżości STAT (KI-1), logowanie zdarzeń UART | ⬜ następna |
 | **4** | Pico (C++) | Pico Agent | HC-SR04 (dystans), lokalny auto-stop przed przeszkodą, pełna telemetria STAT (dist realny) | ⬜ |
 | **5** | Pi (Python) | Pi Agent | hardening: naprawa wyścigu shutdown (KI-2), usunięcie tymczasowego CSS rotate (KI-3) | ⬜ |
@@ -170,6 +183,12 @@ istniało firmware sypiące ramkami STAT. HC-SR04 (Faza 4) wraca do Pico po sesj
   `transform: rotate(180deg)` (kamera zamontowana do góry nogami do czasu statywu).
   Źródło Picamera2 **nie jest ruszane** (decyzja Adriana). Do usunięcia w Fazie 5,
   gdy kamera będzie wyprostowana fizycznie.
+- **KI-4 — współdzielony rail 5 V serw i Pi.** Po przejściu na jeden powerbank serwa
+  dzielą 5 V z Pi (§3). Gwałtowny ruch obu serw pod obciążeniem może zapaść napięcie Pi
+  → brownout/reset, glitch kamery. Mitygacja sprzętowa: osobny port USB + bufor
+  220–470 µF na railu serw. Mitygacja programowa (rezerwowa, gdyby brownout wystąpił):
+  łagodzenie ruchu serw w firmware Pico (ograniczenie prędkości przesuwu). Objaw do
+  obserwacji: reset Pi / zamrożenie streamu przy szybkim pan+tilt.
 
 ---
 
@@ -207,7 +226,8 @@ Podzespoły kluczowe dla projektu: Pi 3A+ (512 MB), Pico / Pico 2 / Pico 2W
 2× SG-90, podwozie gąsienicowe (2 silniki 130, 3–8 V), sterownik MX1508
 (1 A ciągłe / 1,5 A szczyt / kanał — **headroom względem prądu stall silników do
 sprawdzenia w Fazie 2**), L293D (zapas), HC-SR04, 4× AA NiMH 2000 mAh + koszyk,
-2× powerbank 10000 mAh 5V/2,4A, ESP32 z ekranem dotykowym 1,9" (170×320, LVGL).
+powerbank 10000 mAh 5V/2,4A (**projekt używa jednego**; drugi zapasowy/poza robotem —
+brak miejsca), ESP32 z ekranem dotykowym 1,9" (170×320, LVGL).
 
 System Pi: Raspberry Pi OS Lite 64-bit (Bookworm). Picamera2 + sprzętowy
 MJPEGEncoder + `FileOutput(StreamingOutput)`. Usługa systemd jako `User=rp`,
