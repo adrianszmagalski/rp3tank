@@ -25,6 +25,7 @@ _STAT_RE = re.compile(
 )
 
 _COALESCE_INTERVAL_S = 0.05
+_THREAD_JOIN_TIMEOUT_S = 1.0
 
 
 @dataclass
@@ -63,6 +64,8 @@ class PicoLink:
         self._last_stat_monotonic: float | None = None
         self._telemetry_lock = threading.Lock()
         self._cmd_lock = threading.Lock()
+        self._port_lock = threading.Lock()
+        self._disconnect_lock = threading.Lock()
         self._pending: _PendingCommand | None = None
         self._stop_event = threading.Event()
         self._reader_thread: threading.Thread | None = None
@@ -115,7 +118,7 @@ class PicoLink:
             except asyncio.CancelledError:
                 pass
             self._reconnect_task = None
-        self._disconnect()
+        await asyncio.to_thread(self._disconnect)
         logger.info("PicoLink stopped")
 
     def set_drive(self, left: int, right: int) -> None:
@@ -159,7 +162,8 @@ class PicoLink:
             self._connected = False
             return
 
-        self._ser = ser
+        with self._port_lock:
+            self._ser = ser
         self._connected = True
         self._stop_event.clear()
         self._reader_thread = threading.Thread(
@@ -172,36 +176,67 @@ class PicoLink:
         self._sender_thread.start()
         logger.info("UART connected on %s", self._serial_cfg.port)
 
+    def _take_serial(self) -> serial.Serial | None:
+        with self._port_lock:
+            ser = self._ser
+            self._ser = None
+            return ser
+
+    def _close_serial(self, ser: serial.Serial | None) -> None:
+        if ser is None:
+            return
+        try:
+            ser.close()
+        except (SerialException, OSError, TypeError):
+            pass
+
+    def _send_stop_on_serial(self, ser: serial.Serial) -> None:
+        try:
+            ser.write(b"STOP\n")
+            ser.flush()
+        except (SerialException, OSError, TypeError):
+            pass
+
     def _disconnect(self) -> None:
-        self._stop_event.set()
-        self._connected = False
-        self._reset_stat_timestamp()
-        ser = self._ser
-        self._ser = None
-        if ser is not None:
-            try:
-                ser.write(b"STOP\n")
-                ser.flush()
-            except (SerialException, OSError):
-                pass
-            try:
-                ser.close()
-            except (SerialException, OSError):
-                pass
-        if self._reader_thread is not None:
-            self._reader_thread.join(timeout=1.0)
+        with self._disconnect_lock:
+            self._stop_event.set()
+            self._connected = False
+            self._reset_stat_timestamp()
+
+            with self._port_lock:
+                ser_for_stop = self._ser
+            if ser_for_stop is not None:
+                self._send_stop_on_serial(ser_for_stop)
+
+            reader = self._reader_thread
+            sender = self._sender_thread
+            current = threading.current_thread()
+            if reader is not None and reader is not current:
+                reader.join(timeout=_THREAD_JOIN_TIMEOUT_S)
+            if sender is not None and sender is not current:
+                sender.join(timeout=_THREAD_JOIN_TIMEOUT_S)
+
+            ser = self._take_serial()
+            self._close_serial(ser)
             self._reader_thread = None
-        if self._sender_thread is not None:
-            self._sender_thread.join(timeout=1.0)
             self._sender_thread = None
 
     def _reader_loop(self) -> None:
-        assert self._ser is not None
+        with self._port_lock:
+            if self._ser is None:
+                return
         buf = ""
         while not self._stop_event.is_set() and self._connected:
             try:
-                chunk = self._ser.read(256)
-            except (SerialException, OSError) as exc:
+                with self._port_lock:
+                    ser = self._ser
+                if ser is None:
+                    return
+                chunk = ser.read(256)
+            except (SerialException, OSError, TypeError) as exc:
+                if self._stop_event.is_set():
+                    logger.debug("UART read during shutdown: %s", exc)
+                    return
                 logger.warning("UART read error: %s", exc)
                 self._handle_disconnect()
                 return
@@ -240,13 +275,8 @@ class PicoLink:
     def _handle_disconnect(self) -> None:
         self._connected = False
         self._reset_stat_timestamp()
-        ser = self._ser
-        self._ser = None
-        if ser is not None:
-            try:
-                ser.close()
-            except (SerialException, OSError):
-                pass
+        ser = self._take_serial()
+        self._close_serial(ser)
 
     def _sender_loop(self) -> None:
         while not self._stop_event.is_set() and self._connected:
@@ -274,6 +304,9 @@ class PicoLink:
             self._ser.write(f"{line}\n".encode("ascii"))
             self._ser.flush()
             logger.debug("UART TX: %s", line)
-        except (SerialException, OSError) as exc:
+        except (SerialException, OSError, TypeError) as exc:
+            if self._stop_event.is_set():
+                logger.debug("UART write during shutdown: %s", exc)
+                return
             logger.warning("UART write error: %s", exc)
             self._handle_disconnect()
