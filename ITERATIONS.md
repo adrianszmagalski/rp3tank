@@ -6,6 +6,27 @@ podsumowanie każdej sesji leżą w `docs/iterations/`. Format wpisu — patrz
 
 ---
 
+## Faza 5 — Pi: hardening (KI-2 i KI-3 zamknięte) ✅
+
+- **Data:** 2026-06-04
+- **Platforma / agent:** Pi (Python) / Pi Agent (Cursor)
+- **Branch / commit:** `phase5` (patrz `git log -1`)
+- **Plan / podsumowanie:** [`docs/iterations/05-pi-hardening.md`](docs/iterations/05-pi-hardening.md)
+
+**Co zrobiono:**
+- **KI-2:** poprawna kolejność shutdown UART (`stop_event` → `STOP` → join wątków →
+  `close`), `_port_lock` + `_take_serial()` (anty double-close), `TypeError` w readerze,
+  `_handle_disconnect` bez self-join, `stop()` przez `asyncio.to_thread`.
+- **KI-3:** w repo brak `rotate(180deg)` w `index.html` — UI już natywny; Picamera2
+  nietknięte.
+- Graceful shutdown: lifespan + `control-server.service` (SIGTERM, 10 s) — bez zmian,
+  potwierdzone w kodzie.
+
+**Test sprzętowy:** ×10 `systemctl restart` na malince — do wykonania (procedura w
+podsumowaniu sesji).
+
+---
+
 ## Faza 3.1 (dodatkowa) — Pico: tryb serwisowy USB ✅
 
 - **Data:** 2026-06-03
