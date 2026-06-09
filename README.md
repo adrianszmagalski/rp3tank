@@ -47,9 +47,9 @@ rp3tank/
 |---|---|---|---|
 | 1 | Pi (Python) | serwer + kamera MJPEG + WS + /status + most UART + systemd | ✅ ukończona |
 | 2 | Pico (C++) | drive PWM + serwa + watchdog + STAT + logi USB | ✅ ukończona |
-| 3 | Pi (Python) | panel diagnostyczny + żywość Pico po STAT (KI-1) + logi zdarzeń | ⬜ następna |
-| 4 | Pico (C++) | HC-SR04 + auto-stop + pełny `dist` w STAT | ⬜ |
-| 5 | Pi (Python) | hardening: wyścig shutdown (KI-2), usunięcie CSS rotate (KI-3) | ⬜ |
+| 3 | Pi (Python) | panel diagnostyczny + żywość Pico po STAT (KI-1) + logi zdarzeń | ✅ ukończona |
+| 4 | Pico (C++) | HC-SR04 + auto-stop + pełny `dist` w STAT | ⬜ pominięta |
+| 5 | Pi (Python) | hardening: wyścig shutdown (KI-2), usunięcie CSS rotate (KI-3) | ✅ ukończona |
 | 6 | ESP32 (C++/LVGL) | pilot + panel statusu | ⬜ |
 
 Szczegóły, kontrakty i uzasadnienie kolejności: `PROJECT.md`. Log sesji: `ITERATIONS.md`.
